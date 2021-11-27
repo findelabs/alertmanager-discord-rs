@@ -17,4 +17,4 @@ clap = "2"
 env_logger = "0.8"
 log = "0.4"
 chrono = { version = "0.4", features = ["serde"] }
-axum-debug = "0.2"
+hyper-tls = "0.5"
