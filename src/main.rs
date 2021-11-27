@@ -57,7 +57,7 @@ async fn main() {
         .format(|buf, record| {
             writeln!(
                 buf,
-                "{{\"date\": \"{}\", \"level\": \"{}\", {}}}",
+                "{{\"date\": \"{}\", \"level\": \"{}\", \"log\": {}}}",
                 Local::now().format("%Y-%m-%dT%H:%M:%S:%f"),
                 record.level(),
                 record.args()
@@ -100,12 +100,12 @@ async fn main() {
 }
 
 async fn health() -> Json<Value> {
-    log::info!("hit /health");
+    log::info!("\"hit /health\"");
     Json(json!({ "msg": "Healthy"}))
 }
 
 async fn echo(Json(payload): Json<Value>) -> Json<Value> {
-    log::info!("Returning /echo");
+    log::info!("\"Returning /echo\"");
     Json(payload)
 }
 
@@ -120,7 +120,7 @@ async fn handler(
 ) -> Response<Body> {
     let body = generate_body(payload).await;
 
-    log::info!("\"log\": {}", &body);
+    log::info!("{}", &body);
 
     let mut req = Request::builder()
         .method(Method::POST)
@@ -156,17 +156,16 @@ async fn generate_body(payload: Value) -> Value {
         "fields": []
     }]);
 
-    // Get count of alerts
-    let alert_count = match payload["alerts"].as_array() {
-        Some(alerts) => alerts.len(),
-        None => 0,
-    };
+//    // Get count of alerts
+//    let alert_count = match payload["alerts"].as_array() {
+//        Some(alerts) => alerts.len(),
+//        None => 0,
+//    };
 
     // Set card title
     let title = format!(
-        "[{}:{}]: {}",
-        payload["status"].as_str().expect("status"),
-        alert_count,
+        "[{}] {}",
+        payload["status"].as_str().expect("status").to_uppercase(),
         payload["commonLabels"]["alertname"]
             .as_str()
             .expect("alertname")
@@ -191,10 +190,10 @@ async fn generate_body(payload: Value) -> Value {
     let mut fields = Vec::new();
     if let Some(alerts) = payload["alerts"].as_array() {
         for alert in alerts {
-            log::info!("Processing alert");
+            log::info!("\"Processing alert {}\"", alert["labels"]["alertname"].as_str().expect("missing alertname"));
 
-            let status = match alert["status"].is_string() {
-                true => alert["status"].as_str().expect("alert status"),
+            let _instance = match alert["labels"]["instance"].is_string() {
+                true => alert["labels"]["instance"].as_str().expect("alert instance"),
                 false => "unknown",
             };
 
@@ -205,9 +204,9 @@ async fn generate_body(payload: Value) -> Value {
                 false => "missing alertname",
             };
 
-            let name = format!("[{}]: {}", status, alertname);
+            //let name = format!("instance: {}", instance);
             let value = alert["annotations"]["description"].as_str();
-            let field = json!({"name": name, "value": value});
+            let field = json!({"name": alertname, "value": value});
             fields.push(field);
         }
     }
