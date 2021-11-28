@@ -155,8 +155,11 @@ async fn generate_body(payload: Value) -> Value {
     for alert in payload["alerts"].as_array().expect("missing alerts") {
         let alertname = alert["labels"]["alertname"].as_str().expect("Missing alertname");
         let status = alert["status"].as_str().expect("Missing alert status");
-        let enabled = match alert["labels"]["enabled"].is_boolean() {
-            true => alert["labels"]["enabled"].as_bool().expect("enabled"),
+        let enabled = match alert["labels"]["enabled"].is_string() {
+            true => match alert["labels"]["enabled"].as_str().expect("enabled") {
+                "true" => true,
+                _ => false
+            },
             false => false
         };
 
