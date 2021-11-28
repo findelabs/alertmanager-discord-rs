@@ -155,18 +155,25 @@ async fn generate_body(payload: Value) -> Value {
     for alert in payload["alerts"].as_array().expect("missing alerts") {
         let alertname = alert["labels"]["alertname"].as_str().expect("Missing alertname");
         let status = alert["status"].as_str().expect("Missing alert status");
+        let enabled = match alert["labels"]["enabled"].is_boolean() {
+            true => alert["labels"]["enabled"].as_bool().expect("enabled"),
+            false => false
+        };
+
         log::info!("\"Parsing {} alert {}\"", &status, &alertname);
-        match grouped_alerts.get_mut(&status) {
-            Some(value) => {
+
+        match (enabled, grouped_alerts.get_mut(&status)) {
+            (true, Some(value)) => {
                 log::info!("Adding alert to existing {} group", &status);
                 value.push(alert.clone())
             },
-            None => {
+            (true, None) => {
                 log::info!("Adding alert to new {} group", &status);
                 let mut value = Vec::new();
                 value.push(alert.clone());
                 grouped_alerts.insert(status, value);
-            }
+            },
+            (_,_) => log::info!("Skipping alert do to enabled=false")
         }
     };
 
