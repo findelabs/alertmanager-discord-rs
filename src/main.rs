@@ -127,6 +127,7 @@ async fn handler(
         .uri(&state.webhook)
         .body(Body::from(body.to_string()))
         .expect("request builder");
+
     req.headers_mut()
         .insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
 
@@ -142,10 +143,7 @@ async fn generate_body(payload: Value) -> Value {
     // Set content of main card
     card["content"] = match payload["commonAnnotations"]["summary"].is_string() {
         true => payload["commonAnnotations"]["summary"].clone(),
-        false => match payload["commonAnnotations"]["description"].is_string() {
-            true => payload["commonAnnotations"]["description"].clone(),
-            false => json!("Missing summary or description in common annotations"),
-        },
+        false => json!("")
     };
 
     // Create embeds sub doc
@@ -198,14 +196,12 @@ async fn generate_body(payload: Value) -> Value {
             };
 
             let alertname = match alert["labels"]["alertname"].is_string() {
-                true => alert["labels"]["alertname"]
-                    .as_str()
-                    .expect("alert label alertname"),
-                false => "missing alertname",
+                true => alert["labels"]["alertname"].clone(),
+                false => json!("missing alertname")
             };
 
             //let name = format!("instance: {}", instance);
-            let value = alert["annotations"]["description"].as_str();
+            let value = alert["annotations"]["description"].clone();
             let field = json!({"name": alertname, "value": value});
             fields.push(field);
         }
