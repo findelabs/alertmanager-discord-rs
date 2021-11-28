@@ -18,6 +18,9 @@ use serde_json::{json, Value};
 use std::io::Write;
 use std::net::SocketAddr;
 use std::sync::Arc;
+use std::collections::HashMap;
+use tower_http::{trace::TraceLayer};
+
 
 struct State {
     webhook: String,
@@ -85,6 +88,7 @@ async fn main() {
         .route("/post", post(handler))
         .route("/health", get(health))
         .route("/echo", post(echo))
+        .layer(TraceLayer::new_for_http())
         .layer(AddExtensionLayer::new(client))
         .layer(AddExtensionLayer::new(shared_state));
 
@@ -118,6 +122,8 @@ async fn handler(
     Extension(state): Extension<Arc<State>>,
     Json(payload): Json<Value>,
 ) -> Response<Body> {
+    log::info!("{}", &payload);
+
     let body = generate_body(payload).await;
 
     log::info!("{}", &body);
@@ -135,10 +141,34 @@ async fn handler(
 }
 
 async fn generate_body(payload: Value) -> Value {
+
+    // Generate main card
     let mut card = json!({
         "content": "",
         "embeds": []
     });
+
+    // Create grouped alerts object
+    let mut grouped_alerts: HashMap<&str, Vec<Value>> = HashMap::new();
+
+    // Sort alerts by status
+    for alert in payload["alerts"].as_array().expect("missing alerts") {
+        let alertname = alert["labels"]["alertname"].as_str().expect("Missing alertname");
+        let status = alert["status"].as_str().expect("Missing alert status");
+        log::info!("\"Parsing {} alert {}\"", &status, &alertname);
+        match grouped_alerts.get_mut(&status) {
+            Some(value) => {
+                log::info!("Adding alert to existing {} group", &status);
+                value.push(alert.clone())
+            },
+            None => {
+                log::info!("Adding alert to new {} group", &status);
+                let mut value = Vec::new();
+                value.push(alert.clone());
+                grouped_alerts.insert(status, value);
+            }
+        }
+    };
 
     // Set content of main card
     card["content"] = match payload["commonAnnotations"]["summary"].is_string() {
@@ -146,69 +176,65 @@ async fn generate_body(payload: Value) -> Value {
         false => json!("")
     };
 
-    // Create embeds sub doc
-    let mut embeds = json!([{
-        "title": "",
-        "url": "",
-        "color": 0x95A5A6,
-        "fields": []
-    }]);
+    // Create empty embeds doc
+    let mut embeds = Vec::new();
 
-//    // Get count of alerts
-//    let alert_count = match payload["alerts"].as_array() {
-//        Some(alerts) => alerts.len(),
-//        None => 0,
-//    };
+    // Iterate through grouped alerts
+    for (status, alerts) in grouped_alerts {
 
-    // Set card title
-    let title = format!(
-        "[{}] {}",
-        payload["status"].as_str().expect("status").to_uppercase(),
-        payload["commonLabels"]["alertname"]
-            .as_str()
-            .expect("alertname")
-    );
+        let job = payload["commonLabels"]["job"].as_str().unwrap_or_else(|| "");
 
-    // This needs to go into the embed title
-    embeds[0]["title"] = json!(title);
-
-    // Set prometheus url in embed doc
-    if payload["externalURL"].is_string() {
-        embeds[0]["url"] = payload["externalURL"].clone();
-    }
-
-    // Set embed doc color
-    embeds[0]["color"] = match payload["status"].as_str() {
-        Some("firing") => json!(0x992D22),
-        Some("resolved") => json!(0x2ECC71),
-        _ => json!(0x95A5A6),
-    };
-
-    // Gather all alerts to fields array for embed doc
-    let mut fields = Vec::new();
-    if let Some(alerts) = payload["alerts"].as_array() {
+        // Create embeds sub doc
+        let mut embed = json!({
+            "title": "",
+            "color": 0x95A5A6,
+            "fields": []
+        });
+    
+        // Set card title
+        let title = format!(
+            "[{}] {}",
+            &status.to_uppercase(),
+            job
+        );
+    
+        // This needs to go into the embed title
+        embed["title"] = json!(title);
+    
+        // Set embed doc color
+        embed["color"] = match status {
+            "firing" => {
+                log::info!("Setting color to firing");
+                json!(0x992D22)
+            },
+            "resolved" => {
+                log::info!("Setting color to resolved");
+                json!(0x2ECC71)
+            },
+            _ => {
+                log::info!("Setting color to other");
+                json!(0x95A5A6)
+            }
+        };
+    
+        // Gather all alerts to fields array for embed doc
+        let mut fields = Vec::new();
         for alert in alerts {
-            log::info!("\"Processing alert {}\"", alert["labels"]["alertname"].as_str().expect("missing alertname"));
+                let alertname = alert["labels"]["alertname"].as_str().expect("Missing alertname");
 
-            let _instance = match alert["labels"]["instance"].is_string() {
-                true => alert["labels"]["instance"].as_str().expect("alert instance"),
-                false => "unknown",
-            };
-
-            let alertname = match alert["labels"]["alertname"].is_string() {
-                true => alert["labels"]["alertname"].clone(),
-                false => json!("missing alertname")
-            };
-
-            //let name = format!("instance: {}", instance);
-            let value = alert["annotations"]["description"].clone();
-            let field = json!({"name": alertname, "value": value});
-            fields.push(field);
+                log::info!("\"Processing {} alert {}\"", status, alertname);
+                
+                let value = alert["annotations"]["description"].clone();
+                let field = json!({"name": alertname, "value": value});
+                fields.push(field);
         }
-    }
+    
+        // Add fields to embeds
+        embed["fields"] = json!(fields);
 
-    // Add fields to embeds
-    embeds[0]["fields"] = json!(fields);
+        // Add embed doc to embeds doc
+        embeds.push(embed);
+    }
 
     // Build out main card
     card["embeds"] = json!(embeds);
