@@ -160,7 +160,7 @@ async fn generate_body(payload: Value) -> Value {
                 "true" => true,
                 _ => false
             },
-            false => false
+            false => true 
         };
 
         log::info!("\"Parsing {} alert {}\"", &status, &alertname);
