@@ -181,10 +181,10 @@ async fn generate_body(payload: Value) -> Value {
     };
 
     // Set content of main card
-    card["content"] = match payload["commonAnnotations"]["summary"].is_string() {
-        true => payload["commonAnnotations"]["summary"].clone(),
-        false => json!("")
-    };
+//    card["content"] = match payload["commonAnnotations"]["summary"].is_string() {
+//        true => payload["commonAnnotations"]["summary"].clone(),
+//        false => json!("")
+//    };
 
     // Create empty embeds doc
     let mut embeds = Vec::new();
